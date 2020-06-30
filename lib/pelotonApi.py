@@ -1,83 +1,74 @@
-from . import util
-import requests, json
-import logging
+import requests
+import json
+import sys
+
 
 class PelotonApi:
-    """Main Peloton Api Class"""
-    def __init__(self, user_email, user_password):
-        self.logger = logging.getLogger('peloton-to-garmin.PelotonApi')
+    def __init__(self, email, password):
+        self.session, self.user_id = self.get_peloton_session(email, password)
+        self.BASE_URL = 'https://api.pelotoncycle.com/api'
 
-        self.http_base = "https://api.pelotoncycle.com/api/"
-        self.session = requests.Session()
-        
-        auth_endpoint = "https://api.pelotoncycle.com/auth/login"
-        payload = {
-            'username_or_email': user_email,
-            'password': user_password
-        }
 
-        response = self.session.post(auth_endpoint, json=payload, verify=False)
-        parsed_response = util.parse_response(response)
-        util.handle_error(response)
+    def get_peloton_session(self, email, password):
+        """
+            get a logged-in requests session to the peloton API, and the user ID
+        """
+        session = requests.Session()
+        r = session.post('https://api.pelotoncycle.com/auth/login',
+                        json={'username_or_email': email,
+                              'password': password})
+        if r.status_code == 200:
+            return session, r.json().get('user_id')
+        else:
+            raise Exception("can't get a session!")
+            sys.exit()
 
-        self.user_id = parsed_response['user_id']
-        self.session_id = parsed_response['session_id']
 
-    def getAuthCookie(self):
-        cookies = dict(peloton_session_id=self.session_id)
-        return cookies
+    def get_peloton_data(self, url):
+        """
+            query the peloton API and return a python object
+        """
+        r = self.session.get(f'{self.BASE_URL}{url}')
+        # print(f'fetching URL {url}')
+        if r.status_code == 200:
+            # print(f'  returning {r.json()}')
+            return r.json()
+        else:
+            print(f'error getting pelo data: {r.text}')
+            return {}
 
     def getXWorkouts(self, numWorkouts):
         """
             Gets the latest x workouts from Peloton.
         """
-        query = "user/" + self.user_id + "/workouts?joins=peloton.ride&limit="+ str(numWorkouts) +"&page=0&sort_by=-created"
-        url = util.full_url(self.http_base, query)
+        return self.get_peloton_data(f'/user/{self.user_id}/workouts?joins=peloton.ride&limit={numWorkouts}&page=0&sort_by=-created').get('data', [])
 
-        workouts = util.getResponse(self.session, url, {}, self.getAuthCookie())
 
-        return workouts["data"]
-    
     def getLatestWorkout(self):
         """
-            Gets the latest workout from Peloton.
+            get the latest workout from Peloton
         """
-        query = "user/" + self.user_id + "/workouts?joins=peloton.ride&limit=1&page=0&sort_by=-created"
-        url = util.full_url(self.http_base, query)
+        workouts = self.getXWorkouts(1)
+        return workouts[0]
 
-        workouts = util.getResponse(self.session, url, {}, self.getAuthCookie())
 
-        return workouts["data"][0]
-    
     def getWorkoutById(self, workoutId):
         """
-            Gets workout from Peloton by id.
+            get workout from peloton by id.
         """
+        return self.get_peloton_data(f'/workout/{workoutId}?joins=peloton,peloton.ride,peloton.ride.instructor,user')
 
-        query = "workout/" + workoutId + "?joins=peloton,peloton.ride,peloton.ride.instructor,user"
-        url = util.full_url(self.http_base, query)
-
-        return util.getResponse(self.session, url, {}, self.getAuthCookie())
 
     def getWorkoutSamplesById(self, workoutId):
         """
-            Gets workout samples from Peloton by id.
+            get workout samples from peloton by id
         """
+        return self.get_peloton_data(f'/workout/{workoutId}/performance_graph?every_n=1')
 
-        query = "workout/" + workoutId + "/performance_graph?every_n=1"
-        url = util.full_url(self.http_base, query)
 
-        return util.getResponse(self.session, url, {}, self.getAuthCookie())
-    
     def getWorkoutSummaryById(self, workoutId):
         """
-            Gets workout summary from Peloton by id.
+            get workout summary from peloton by id
         """
+        return self.get_peloton_data(f'/workout/{workoutId}/summary')
 
-        query = "workout/" + workoutId + "/summary"
-        url = util.full_url(self.http_base, query)
-
-        return util.getResponse(self.session, url, {}, self.getAuthCookie())
-
-
-    

@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as etree
 from datetime import datetime, timezone
 import logging
+import json
 
 ##############################
 # Logging Setup
@@ -35,6 +36,8 @@ def workoutSamplesToTCX(workout, workoutSummary, workoutSamples, outputDir):
         logger.error("No workout sample data.") 
         return
 
+    with open(f"/tmp/peloton-{workoutSummary.get('workout_id')}.json", "w") as fh:
+        json.dump({'workout': workout, 'workoutSamples': workoutSamples, 'workoutSummary': workoutSummary}, fh)
     startTimeInSeconds = workout['start_time']
 
     etree.register_namespace("","http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2")
